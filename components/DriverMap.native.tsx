@@ -21,6 +21,8 @@ interface DriverMapProps {
   vehiclePosition?: { lat: number; lng: number; heading: number };
   vehicleType?: string;
   markers?: MapMarker[];
+  arrivalTime?: string | null;
+  arrivalPosition?: { lat: number; lng: number } | null;
   onMapReady?: () => void;
 }
 
@@ -30,6 +32,8 @@ export default function DriverMap({
   vehiclePosition,
   vehicleType,
   markers,
+  arrivalTime,
+  arrivalPosition,
   onMapReady,
 }: DriverMapProps) {
   const webViewRef = useRef<WebView>(null);
@@ -99,6 +103,18 @@ export default function DriverMap({
     sendCommand({ type: 'SET_MARKERS', markers: markers || [] });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [markers, isMapReady]);
+
+  // Update arrival card
+  useEffect(() => {
+    if (!isMapReady) return;
+    sendCommand({
+      type: 'SET_ARRIVAL_CARD',
+      arrivalTime: arrivalTime ?? null,
+      lat: arrivalPosition?.lat,
+      lng: arrivalPosition?.lng,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [arrivalTime, arrivalPosition?.lat, arrivalPosition?.lng, isMapReady]);
 
   // On web, react-native-webview renders an iframe; html source works the same.
   return (

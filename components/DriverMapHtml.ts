@@ -1,19 +1,30 @@
 // Self-contained MapLibre GL JS HTML page rendered inside a react-native-webview.
 // Communicates with the React Native side via window.postMessage / ReactNativeWebView.postMessage.
 
-// Vehicle type -> hosted image URL. WebView loads inline HTML, so relative paths
-// cannot resolve; we use absolute hosted URLs instead.
+import {
+  bicycleDataUri,
+  motorbikeDataUri,
+  economyDataUri,
+  closed_truckDataUri,
+  open_truckDataUri,
+  refrigerated_truckDataUri,
+  xxlDataUri,
+} from './vehicleIconsBase64';
+
+// Vehicle type -> image source. The WebView loads inline HTML and cannot resolve
+// bundled asset paths, so the icons are inlined as base64 data URIs. This
+// guarantees the icon always loads regardless of network state.
 const VEHICLE_IMAGE_MAP: Record<string, string> = {
-  bicycle: 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/bicycle-rT3RdymzU7nwN2YWOMrKmdMjrH9KCj.png',
-  motorbike: 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/motorbike-n6LWq7d2IKdFHrDd4h1F7O2clA4DTo.png',
-  economy: 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/economy-7SCAB7cyOdj3R8wRAkmPswzaDMrWoV.png',
-  car: 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/economy-7SCAB7cyOdj3R8wRAkmPswzaDMrWoV.png',
-  truck: 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/closed_truck-w93jwz17bZM1GFs3P6NE4oIcTvdmtY.png',
-  closed_truck: 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/closed_truck-w93jwz17bZM1GFs3P6NE4oIcTvdmtY.png',
-  open_truck: 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/open_truck-k80rfZXj76UFxHrLEGubEmkoetatk6.png',
-  refrigerated_truck: 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/refrigerated_truck-23gh62gySzYQfEh9Fan6rELPjvdq2n.png',
-  bus: 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/xxl-OrYM8pTccMsITZJByAVEy6Vgovujn9.png',
-  xxl: 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/xxl-OrYM8pTccMsITZJByAVEy6Vgovujn9.png',
+  bicycle: bicycleDataUri,
+  motorbike: motorbikeDataUri,
+  economy: economyDataUri,
+  car: economyDataUri,
+  truck: closed_truckDataUri,
+  closed_truck: closed_truckDataUri,
+  open_truck: open_truckDataUri,
+  refrigerated_truck: refrigerated_truckDataUri,
+  bus: xxlDataUri,
+  xxl: xxlDataUri,
 };
 
 export function getMapHtml(initialLat: number, initialLng: number): string {
@@ -60,6 +71,33 @@ export function getMapHtml(initialLat: number, initialLng: number): string {
       color: #fff; font-size: 12px; font-weight: 700;
       font-family: -apple-system, system-ui, sans-serif;
       box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+    }
+
+    /* Arrival card (pill + pointer) */
+    .arrival-card-wrapper {
+      width: fit-content;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      pointer-events: none;
+    }
+    .arrival-card-pill {
+      background: #5B2EFF;
+      color: #fff;
+      font-family: -apple-system, system-ui, sans-serif;
+      font-size: 14px;
+      font-weight: 700;
+      padding: 8px 14px;
+      border-radius: 9999px;
+      white-space: nowrap;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+    }
+    .arrival-card-pointer {
+      width: 0; height: 0;
+      border-left: 6px solid transparent;
+      border-right: 6px solid transparent;
+      border-top: 7px solid #5B2EFF;
+      margin-top: -1px;
     }
 
     @keyframes bounceIn {
@@ -111,6 +149,7 @@ export function getMapHtml(initialLat: number, initialLng: number): string {
     var vehicleAnimFrame = null;
     var currentCoords = [];   // [[lng, lat], ...] current decoded polyline
     var markersMap = {};      // id -> maplibregl.Marker
+    var arrivalCardMarker = null; // arrival "Arrive by ..." pill marker
 
     function postToRN(obj) {
       if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
@@ -254,6 +293,30 @@ export function getMapHtml(initialLat: number, initialLng: number): string {
       });
     }
 
+    // ---- Arrival card ----
+    function setArrivalCard(arrivalTime, lat, lng) {
+      // Remove existing card first
+      if (arrivalCardMarker) {
+        arrivalCardMarker.remove();
+        arrivalCardMarker = null;
+      }
+      if (!arrivalTime || typeof lat !== 'number' || typeof lng !== 'number') return;
+
+      var wrapper = document.createElement('div');
+      wrapper.className = 'arrival-card-wrapper';
+      var pill = document.createElement('div');
+      pill.className = 'arrival-card-pill';
+      pill.textContent = 'Arrive by ' + arrivalTime;
+      var pointer = document.createElement('div');
+      pointer.className = 'arrival-card-pointer';
+      wrapper.appendChild(pill);
+      wrapper.appendChild(pointer);
+
+      arrivalCardMarker = new maplibregl.Marker({ element: wrapper, anchor: 'bottom' })
+        .setLngLat([lng, lat])
+        .addTo(map);
+    }
+
     // ---- Camera ----
     function fitBounds(coords) {
       if (!coords || coords.length === 0) return;
@@ -293,6 +356,9 @@ export function getMapHtml(initialLat: number, initialLng: number): string {
           break;
         case 'CLEAR_MARKERS':
           clearMarkers();
+          break;
+        case 'SET_ARRIVAL_CARD':
+          setArrivalCard(msg.arrivalTime, msg.lat, msg.lng);
           break;
         case 'FIT_BOUNDS':
           fitBounds(msg.coords);

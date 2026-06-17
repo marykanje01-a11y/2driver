@@ -20,6 +20,8 @@ interface UseActiveTripResult {
   markers: MarkerDef[];
   showPolyline: boolean;
   activePolyline: string | null;
+  etaMinutes: number | null;
+  arrivalTime: string | null; // formatted clock time, e.g. "2:45 PM"
 }
 
 // Read a coordinate that may be stored in several shapes:
@@ -172,6 +174,37 @@ export function useActiveTrip(driverId: string | null): UseActiveTripResult {
 
   const showPolyline = activePolyline != null;
 
+  // ---- ETA + arrival time ----
+  // Same status/workflow switch as above:
+  //   accepted (driver -> pickup/store) => driverToPickupEtaMinutes
+  //   started / picked_up (pickup -> destination) => tripEtaMinutes
+  //   all other statuses (arrived, at_store, delivered, completed, none) => null
+  let etaMinutes: number | null = null;
+  if (activeTrip && tripStatus && workflowType) {
+    if (workflowType === 'direct_trip') {
+      if (tripStatus === 'accepted') {
+        etaMinutes = activeTrip?.driverToPickupEtaMinutes ?? null;
+      } else if (tripStatus === 'started') {
+        etaMinutes = activeTrip?.tripEtaMinutes ?? null;
+      }
+    } else if (workflowType === 'store_delivery') {
+      if (tripStatus === 'accepted') {
+        etaMinutes = activeTrip?.driverToPickupEtaMinutes ?? null;
+      } else if (tripStatus === 'picked_up') {
+        etaMinutes = activeTrip?.tripEtaMinutes ?? null;
+      }
+    }
+  }
+
+  // Recompute fresh each render — never cache a stale timestamp.
+  const arrivalTime =
+    etaMinutes !== null
+      ? new Date(Date.now() + etaMinutes * 60000).toLocaleTimeString([], {
+          hour: 'numeric',
+          minute: '2-digit',
+        })
+      : null;
+
   return {
     activeTrip,
     tripStatus,
@@ -181,5 +214,7 @@ export function useActiveTrip(driverId: string | null): UseActiveTripResult {
     markers,
     showPolyline,
     activePolyline,
+    etaMinutes,
+    arrivalTime,
   };
 }

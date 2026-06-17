@@ -108,7 +108,27 @@ export default function Dashboard() {
   const [vehiclePosition, setVehiclePosition] = useState<{ lat: number; lng: number; heading: number } | null>(null);
 
   // Active trip from Firestore orders (drives the live map polylines + markers)
-  const { tripStatus, markers, activePolyline, showPolyline } = useActiveTrip(driverId);
+  const { tripStatus, workflowType, markers, activePolyline, showPolyline, arrivalTime } =
+    useActiveTrip(driverId);
+
+  // Arrival card anchors at the coordinate matching the current trip phase:
+  //   direct_trip accepted -> pickup, store_delivery accepted -> store,
+  //   started / picked_up -> destination (dropoff), otherwise none.
+  let arrivalPosition: { lat: number; lng: number } | null = null;
+  if (arrivalTime && tripStatus && workflowType) {
+    let targetId: string | null = null;
+    if (workflowType === 'direct_trip') {
+      if (tripStatus === 'accepted') targetId = 'pickup';
+      else if (tripStatus === 'started') targetId = 'dropoff';
+    } else if (workflowType === 'store_delivery') {
+      if (tripStatus === 'accepted') targetId = 'store';
+      else if (tripStatus === 'picked_up') targetId = 'dropoff';
+    }
+    if (targetId) {
+      const target = markers.find((m) => m.id === targetId);
+      if (target) arrivalPosition = { lat: target.lat, lng: target.lng };
+    }
+  }
 
   const [showChatPanel, setShowChatPanel] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -582,6 +602,8 @@ export default function Dashboard() {
           vehiclePosition={vehiclePosition || undefined}
           vehicleType={vehicleType}
           markers={markers}
+          arrivalTime={arrivalTime}
+          arrivalPosition={arrivalPosition}
         />
 
         {/* Top action buttons */}

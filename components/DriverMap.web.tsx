@@ -3,22 +3,38 @@ import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import polyline from '@mapbox/polyline';
 
+// Bundled vehicle icons (Metro/web resolve these imports to asset URLs)
+import bicycleIcon from '../assets/images/bicycle.png';
+import motorbikeIcon from '../assets/images/motorbike.png';
+import economyIcon from '../assets/images/economy.png';
+import closedTruckIcon from '../assets/images/closed_truck.png';
+import openTruckIcon from '../assets/images/open_truck.png';
+import refrigeratedTruckIcon from '../assets/images/refrigerated_truck.png';
+import xxlIcon from '../assets/images/xxl.png';
+
 // Johannesburg default center
 const DEFAULT_LAT = -26.2041;
 const DEFAULT_LNG = 28.0473;
 
-// Vehicle type -> hosted image URL (same set used by the native HTML bridge)
+// On web, an imported image may be a string URL or a module object with `.uri`/`.default`.
+function resolveAsset(asset: any): string {
+  if (typeof asset === 'string') return asset;
+  if (asset && typeof asset === 'object') return asset.uri || asset.default || '';
+  return '';
+}
+
+// Vehicle type -> bundled image source (same set used by the native HTML bridge)
 const VEHICLE_IMAGE_MAP: Record<string, string> = {
-  bicycle: 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/bicycle-rT3RdymzU7nwN2YWOMrKmdMjrH9KCj.png',
-  motorbike: 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/motorbike-n6LWq7d2IKdFHrDd4h1F7O2clA4DTo.png',
-  economy: 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/economy-7SCAB7cyOdj3R8wRAkmPswzaDMrWoV.png',
-  car: 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/economy-7SCAB7cyOdj3R8wRAkmPswzaDMrWoV.png',
-  truck: 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/closed_truck-w93jwz17bZM1GFs3P6NE4oIcTvdmtY.png',
-  closed_truck: 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/closed_truck-w93jwz17bZM1GFs3P6NE4oIcTvdmtY.png',
-  open_truck: 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/open_truck-k80rfZXj76UFxHrLEGubEmkoetatk6.png',
-  refrigerated_truck: 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/refrigerated_truck-23gh62gySzYQfEh9Fan6rELPjvdq2n.png',
-  bus: 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/xxl-OrYM8pTccMsITZJByAVEy6Vgovujn9.png',
-  xxl: 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/xxl-OrYM8pTccMsITZJByAVEy6Vgovujn9.png',
+  bicycle: resolveAsset(bicycleIcon),
+  motorbike: resolveAsset(motorbikeIcon),
+  economy: resolveAsset(economyIcon),
+  car: resolveAsset(economyIcon),
+  truck: resolveAsset(closedTruckIcon),
+  closed_truck: resolveAsset(closedTruckIcon),
+  open_truck: resolveAsset(openTruckIcon),
+  refrigerated_truck: resolveAsset(refrigeratedTruckIcon),
+  bus: resolveAsset(xxlIcon),
+  xxl: resolveAsset(xxlIcon),
 };
 const DEFAULT_VEHICLE = VEHICLE_IMAGE_MAP['economy'];
 
@@ -35,6 +51,8 @@ interface DriverMapProps {
   vehiclePosition?: { lat: number; lng: number; heading: number };
   vehicleType?: string;
   markers?: MapMarker[];
+  arrivalTime?: string | null;
+  arrivalPosition?: { lat: number; lng: number } | null;
   onMapReady?: () => void;
 }
 
@@ -47,6 +65,8 @@ export default function DriverMap({
   vehiclePosition,
   vehicleType,
   markers,
+  arrivalTime,
+  arrivalPosition,
   onMapReady,
 }: DriverMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -63,6 +83,43 @@ export default function DriverMap({
 
   // Map of active markers keyed by id
   const markersRef = useRef<Record<string, maplibregl.Marker>>({});
+
+  // Arrival "Arrive by ..." card marker
+  const arrivalCardRef = useRef<maplibregl.Marker | null>(null);
+
+  // Create / update / remove the arrival card pill marker
+  const createArrivalCard = (time: string) => {
+    const wrapper = document.createElement('div');
+    wrapper.style.width = 'fit-content';
+    wrapper.style.display = 'flex';
+    wrapper.style.flexDirection = 'column';
+    wrapper.style.alignItems = 'center';
+    wrapper.style.pointerEvents = 'none';
+
+    const pill = document.createElement('div');
+    pill.style.background = '#5B2EFF';
+    pill.style.color = '#fff';
+    pill.style.fontFamily = '-apple-system, system-ui, sans-serif';
+    pill.style.fontSize = '14px';
+    pill.style.fontWeight = '700';
+    pill.style.padding = '8px 14px';
+    pill.style.borderRadius = '9999px';
+    pill.style.whiteSpace = 'nowrap';
+    pill.style.boxShadow = '0 2px 8px rgba(0,0,0,0.25)';
+    pill.textContent = `Arrive by ${time}`;
+
+    const pointer = document.createElement('div');
+    pointer.style.width = '0';
+    pointer.style.height = '0';
+    pointer.style.borderLeft = '6px solid transparent';
+    pointer.style.borderRight = '6px solid transparent';
+    pointer.style.borderTop = '7px solid #5B2EFF';
+    pointer.style.marginTop = '-1px';
+
+    wrapper.appendChild(pill);
+    wrapper.appendChild(pointer);
+    return wrapper;
+  };
 
   // ---- Init map once ----
   useEffect(() => {
@@ -328,6 +385,33 @@ export default function DriverMap({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [markers]);
+
+  // ---- Arrival card: create / update / remove ----
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    const apply = () => {
+      // Remove existing card first
+      if (arrivalCardRef.current) {
+        arrivalCardRef.current.remove();
+        arrivalCardRef.current = null;
+      }
+      if (!arrivalTime || !arrivalPosition) return;
+
+      const el = createArrivalCard(arrivalTime);
+      arrivalCardRef.current = new maplibregl.Marker({ element: el, anchor: 'bottom' })
+        .setLngLat([arrivalPosition.lng, arrivalPosition.lat])
+        .addTo(map);
+    };
+
+    if (isReadyRef.current) {
+      apply();
+    } else {
+      map.once('load', apply);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [arrivalTime, arrivalPosition?.lat, arrivalPosition?.lng]);
 
   return <div ref={containerRef} style={{ width: '100%', height: '100%' }} />;
 }
