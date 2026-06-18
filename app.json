@@ -12,14 +12,19 @@
       "supportsTablet": true,
       "infoPlist": {
         "NSCameraUsageDescription": "This app needs access to your camera to take pictures for registration.",
-        "NSPhotoLibraryUsageDescription": "This app needs access to your photo library."
+        "NSPhotoLibraryUsageDescription": "This app needs access to your photo library.",
+        "NSLocationWhenInUseUsageDescription": "This app needs your location to show your position on the map and match you with nearby trips.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "This app needs your location, including in the background, to keep your position updated on the map and match you with nearby trips while driving."
       }
     },
     "android": {
       "permissions": [
         "CAMERA",
         "READ_EXTERNAL_STORAGE",
-        "WRITE_EXTERNAL_STORAGE"
+        "WRITE_EXTERNAL_STORAGE",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION"
       ]
     },
     "web": {
@@ -35,6 +40,14 @@
         "expo-camera",
         {
           "cameraPermission": "Allow this app to access your camera to take pictures for registration."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "This app needs your location to show your position on the map and match you with nearby trips.",
+          "locationAlwaysAndWhenInUsePermission": "This app needs your location, including in the background, to keep your position updated on the map and match you with nearby trips while driving.",
+          "isAndroidBackgroundLocationEnabled": true
         }
       ]
     ],

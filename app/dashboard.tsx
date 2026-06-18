@@ -23,16 +23,21 @@ const getLocation = async () => {
       const location = await Location.getCurrentPositionAsync({});
       return location.coords;
     }
+    console.log('[v0] getLocation: foreground location permission not granted, status =', status);
     return null;
   } else {
     return new Promise<{ latitude: number; longitude: number; heading?: number } | null>((resolve) => {
       if (!navigator.geolocation) {
+        console.log('[v0] getLocation: navigator.geolocation is unavailable');
         resolve(null);
         return;
       }
       navigator.geolocation.getCurrentPosition(
         (pos) => resolve({ latitude: pos.coords.latitude, longitude: pos.coords.longitude, heading: pos.coords.heading || 0 }),
-        () => resolve(null)
+        (error) => {
+          console.log('[v0] getLocation: getCurrentPosition failed:', error.message);
+          resolve(null);
+        }
       );
     });
   }
@@ -115,20 +120,29 @@ export default function Dashboard() {
   //   direct_trip accepted -> pickup, store_delivery accepted -> store,
   //   started / picked_up -> destination (dropoff), otherwise none.
   let arrivalPosition: { lat: number; lng: number } | null = null;
+  let arrivalTargetId: string | null = null;
   if (arrivalTime && tripStatus && workflowType) {
-    let targetId: string | null = null;
     if (workflowType === 'direct_trip') {
-      if (tripStatus === 'accepted') targetId = 'pickup';
-      else if (tripStatus === 'started') targetId = 'dropoff';
+      if (tripStatus === 'accepted') arrivalTargetId = 'pickup';
+      else if (tripStatus === 'started') arrivalTargetId = 'dropoff';
     } else if (workflowType === 'store_delivery') {
-      if (tripStatus === 'accepted') targetId = 'store';
-      else if (tripStatus === 'picked_up') targetId = 'dropoff';
+      if (tripStatus === 'accepted') arrivalTargetId = 'store';
+      else if (tripStatus === 'picked_up') arrivalTargetId = 'dropoff';
     }
-    if (targetId) {
-      const target = markers.find((m) => m.id === targetId);
+    if (arrivalTargetId) {
+      const target = markers.find((m) => m.id === arrivalTargetId);
       if (target) arrivalPosition = { lat: target.lat, lng: target.lng };
+      else arrivalTargetId = null; // no matching marker, nothing to hide
     }
   }
+
+  // Hide the plain dot/pin marker that sits directly under the arrival pill so
+  // it doesn't read as a spade/shield beneath the "Arrive by ..." card. Other
+  // markers along the route still render normally.
+  const displayedMarkers =
+    arrivalPosition && arrivalTargetId
+      ? markers.filter((m) => m.id !== arrivalTargetId)
+      : markers;
 
   const [showChatPanel, setShowChatPanel] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -396,7 +410,25 @@ export default function Dashboard() {
     const photo = driverData.profile?.profilePicture || '';
     const rating = driverData.rating || 5.0;
 
-    const coords = await getLocation();
+    let coords = await getLocation();
+
+    // Fallback: a fresh GPS fix can be slow or time out. On native, fall back to
+    // the last-known position so the vehicle marker appears immediately.
+    if (!coords && Platform.OS !== 'web') {
+      try {
+        const Location = await import('expo-location');
+        const lastKnown = await Location.getLastKnownPositionAsync({});
+        if (lastKnown) {
+          coords = lastKnown.coords;
+          console.log('[v0] goOnline: using last-known position as fallback');
+        } else {
+          console.log('[v0] goOnline: no last-known position available');
+        }
+      } catch (err) {
+        console.log('[v0] goOnline: getLastKnownPositionAsync failed:', err);
+      }
+    }
+
     if (coords) {
       const { latitude, longitude } = coords;
       setVehiclePosition({ lat: latitude, lng: longitude, heading: (coords as any).heading || 0 });
@@ -601,7 +633,7 @@ export default function Dashboard() {
           polyline={showPolyline ? activePolyline || undefined : undefined}
           vehiclePosition={vehiclePosition || undefined}
           vehicleType={vehicleType}
-          markers={markers}
+          markers={displayedMarkers}
           arrivalTime={arrivalTime}
           arrivalPosition={arrivalPosition}
         />

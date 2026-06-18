@@ -40,6 +40,7 @@ interface TripRequest {
     pickupLng: number;
     dropLat: number;
     dropLng: number;
+    stops?: Array<{ address: string; lat: number; lng: number }>;
     total: number;
     fee: number;
     userName: string;
@@ -533,6 +534,7 @@ export default function GlobalTripRequestPanel() {
   const destinationAddress = requestData.destinationAddress || 'Unknown destination';
   const userName = requestData.userName || 'Customer';
   const userPhone = requestData.userPhone;
+  const stops = Array.isArray(requestData.stops) ? requestData.stops : [];
   const statusDisplay = getStatusDisplay();
 
   return (
@@ -610,6 +612,19 @@ export default function GlobalTripRequestPanel() {
               <Text style={styles.value} numberOfLines={2}>{pickupAddress}</Text>
             </View>
           </View>
+
+          {/* Stops (between pickup and destination) */}
+          {stops.map((stop, index) => (
+            <View style={styles.infoRow} key={`stop-${index}`}>
+              <View style={[styles.iconCircle, styles.stopIcon]}>
+                <Text style={styles.stopNumber}>{index + 1}</Text>
+              </View>
+              <View style={styles.infoContent}>
+                <Text style={styles.label}>{`Stop ${index + 1}`}</Text>
+                <Text style={styles.value} numberOfLines={2}>{stop.address}</Text>
+              </View>
+            </View>
+          ))}
 
           {/* Destination */}
           <View style={styles.infoRow}>
@@ -748,6 +763,14 @@ const styles = StyleSheet.create({
   },
   destinationIcon: {
     backgroundColor: '#2196F3',
+  },
+  stopIcon: {
+    backgroundColor: '#5B2EFF',
+  },
+  stopNumber: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
   },
   infoContent: {
     marginLeft: 12,
